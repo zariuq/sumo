@@ -24,3 +24,6 @@ lean_exe sumo_kif_export_sig where
 
 lean_exe sumo_kif_export_axioms where
   root := `ExportAxiomsMain
+
+lean_exe sumo_kif_export_theory where
+  root := `ExportTheoryMain

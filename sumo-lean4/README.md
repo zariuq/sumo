@@ -37,6 +37,15 @@ This emits one Lean `axiom` per non-metadata top-level KIF form, using the list/
 lake exe sumo_kif_export_axioms --module MergeAxioms --out Sumo/MergeAxioms.lean
 ```
 
+## Exporting a theory as data (recommended for consistency work)
+
+This emits a `def axioms : List Obj` where all free variables are closed using `mkForall`/`mkForallRow`,
+so the result is a *closed* list of object-formulas you can reason about without adding global axioms.
+
+```bash
+lake exe sumo_kif_export_theory --module MergeTheory --out Sumo/MergeTheory.lean
+```
+
 ## Building
 
 ```bash

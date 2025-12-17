@@ -288,4 +288,35 @@ def renderAxiomsFile (moduleName : String) (xs : List Sexp) : String :=
     , "end Sumo"
     ]
 
+def renderClosedFormula (s : Sexp) : String :=
+  let (fts, frs) := freeVars s
+  let termVars := sortStrings fts.toList
+  let rowVars := sortStrings frs.toList
+  let body := renderObj s
+  let body :=
+    termVars.foldr
+      (fun v acc => "mkForall (fun (" ++ renderVar v ++ " : Obj) => " ++ acc ++ ")")
+      body
+  rowVars.foldr
+    (fun v acc => "mkForallRow (fun (" ++ renderVar v ++ " : List Obj) => " ++ acc ++ ")")
+    body
+
+def renderTheoryFile (moduleName : String) (xs : List Sexp) : String :=
+  let (metaDecls, assertions) := foldDecls xs
+  let axioms :=
+    assertions.map renderClosedFormula
+  String.intercalate "\n\n"
+    [ "import Sumo.Signature"
+    , "namespace Sumo"
+    , s!"namespace {moduleName}"
+    , renderMetaDecls metaDecls
+    , "noncomputable section"
+    , "def axioms : List Obj :="
+    , " [" ++ "\n" ++ String.intercalate ",\n" axioms ++ "\n ]"
+    , "def axiomCount : Nat := axioms.length"
+    , "end"
+    , s!"end {moduleName}"
+    , "end Sumo"
+    ]
+
 end SumoKif
