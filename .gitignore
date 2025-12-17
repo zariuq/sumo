@@ -31,3 +31,6 @@ WordNetMappings/verb.Framestext
 
 #Linux
 .directory
+
+# Claude Code internal state
+.claude-data/

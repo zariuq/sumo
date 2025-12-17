@@ -19,6 +19,10 @@ structure Signature : Type where
   arityConflicts : Std.HashMap String (List Arity) := {}
   -- symbol -> arity inferred from max domain index (when no class-based arity could be found)
   arityInferredFromDomains : Std.HashMap String Nat := {}
+  -- class hierarchy for subsumption checking
+  classSupers : Std.HashMap String (List String) := {}
+  -- pairs of disjoint classes (transitive closure computed)
+  disjointPairs : List (String × String) := []
 
 def Signature.empty : Signature := {}
 
@@ -64,6 +68,7 @@ structure SigBuilder : Type where
   symClasses : Std.HashMap String (List String) := {}
   classSupers : Std.HashMap String (List String) := {}
   domains : Std.HashMap String (Std.HashMap Nat String) := {}
+  disjointPairs : List (String × String) := []
 
 def SigBuilder.empty : SigBuilder := {}
 
@@ -93,6 +98,9 @@ def SigBuilder.addDomain (b : SigBuilder) (sym : String) (idx : Nat) (cls : Stri
   let inner := inner.insert idx cls
   { b with domains := b.domains.insert sym inner }
 
+def SigBuilder.addDisjoint (b : SigBuilder) (c1 : String) (c2 : String) : SigBuilder :=
+  { b with disjointPairs := (c1, c2) :: b.disjointPairs }
+
 def SigBuilder.ingest (b : SigBuilder) : Sexp → SigBuilder
   | .list xs =>
       match xs with
@@ -110,8 +118,21 @@ def SigBuilder.ingest (b : SigBuilder) : Sexp → SigBuilder
           match idxStr.toNat? with
           | some idx => b.addDomain sym idx cls
           | none => b
+      | (.atom (.sym "disjoint")) :: (.atom (.sym c1)) :: (.atom (.sym c2)) :: _ =>
+          b.addDisjoint c1 c2
+      | (.atom (.sym "disjointDecomposition")) :: _ :: rest =>
+          rest.foldl (fun b' child =>
+            match child with
+            | .atom (.sym c) => addDisjointPairwise b' c rest
+            | _ => b') b
       | _ => b
   | _ => b
+where
+  addDisjointPairwise (b : SigBuilder) (c : String) (rest : List Sexp) : SigBuilder :=
+    rest.foldl (fun b' child =>
+      match child with
+      | .atom (.sym c2) => if c != c2 then b'.addDisjoint c c2 else b'
+      | _ => b') b
 
 partial def resolveClassArity? (classSupers : Std.HashMap String (List String)) : String → List String → Option Arity
   | cls, visited =>
@@ -152,12 +173,34 @@ def combineArities (as : List Arity) : Option Arity × List Arity :=
 def SigBuilder.ingestAll (b : SigBuilder) (xs : List Sexp) : SigBuilder :=
   xs.foldl SigBuilder.ingest b
 
+-- Compute all subclasses of a class (transitive closure)
+partial def allSubclasses (classSupers : Std.HashMap String (List String)) (cls : String) : List String :=
+  go [cls] []
+where
+  go : List String → List String → List String
+    | [], acc => acc.eraseDups
+    | c :: cs, acc =>
+        if acc.contains c then
+          go cs acc
+        else
+          let subs := classSupers.toList.filter (fun (_, sups) => sups.contains c) |>.map Prod.fst
+          go (subs ++ cs) (c :: acc)
+
+-- Compute transitive closure of disjointness using subclass relations
+def computeDisjointClosure (classSupers : Std.HashMap String (List String)) (pairs : List (String × String)) : List (String × String) :=
+  pairs.flatMap fun (c1, c2) =>
+    let subs1 := allSubclasses classSupers c1
+    let subs2 := allSubclasses classSupers c2
+    List.flatMap (fun s1 => subs2.map fun s2 => (s1, s2)) subs1
+
 def SigBuilder.finalize (b : SigBuilder) : Signature := Id.run do
   let mut sig : Signature :=
     { symArity := b.symArityExplicit
       domains := b.domains
       arityConflicts := b.symArityExplicitConflicts
-      arityInferredFromDomains := {} }
+      arityInferredFromDomains := {}
+      classSupers := b.classSupers
+      disjointPairs := [] }
   for (sym, classes) in b.symClasses.toList do
     let mut inferred : List Arity := []
     for cls in classes do
@@ -195,6 +238,9 @@ def SigBuilder.finalize (b : SigBuilder) : Signature := Id.run do
           { sig with
             symArity := sig.symArity.insert sym (.fixed maxIdx)
             arityInferredFromDomains := sig.arityInferredFromDomains.insert sym maxIdx }
+  -- Compute transitive closure of disjointness
+  let disjointClosure := computeDisjointClosure b.classSupers b.disjointPairs
+  sig := { sig with disjointPairs := disjointClosure.eraseDups }
   return sig
 
 def Signature.fromKb (xs : List Sexp) : Signature :=
