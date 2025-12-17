@@ -39,10 +39,8 @@ def renderSignatureLean (syms : Array String) (sig : Signature) : String :=
   let appLines := appLines.qsort (fun a b => a < b)
   let apps := String.intercalate "\n" appLines.toList
   String.intercalate "\n\n"
-    [ "namespace Sumo"
-    , "axiom Obj : Type"
-    , "axiom ap : Obj → List Obj → Obj"
-    , "axiom Holds : Obj → Prop"
+    [ "import Sumo.Core"
+    , "namespace Sumo"
     , "namespace Const"
     , decls
     , "end Const"

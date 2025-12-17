@@ -21,3 +21,6 @@ lean_exe sumo_kif_check where
 
 lean_exe sumo_kif_export_sig where
   root := `ExportSigMain
+
+lean_exe sumo_kif_export_axioms where
+  root := `ExportAxiomsMain

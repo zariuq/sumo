@@ -28,6 +28,15 @@ lake exe sumo_kif_check ../People.kif ../Merge.kif
 lake exe sumo_kif_export_sig --out Sumo/Signature.lean
 ```
 
+## Exporting Lean axioms (shallow embedding)
+
+This emits one Lean `axiom` per non-metadata top-level KIF form, using the list/spine encoding
+(`ap : Obj → List Obj → Obj`) and object-level logical constructors from `Sumo/Core.lean`.
+
+```bash
+lake exe sumo_kif_export_axioms --module MergeAxioms --out Sumo/MergeAxioms.lean
+```
+
 ## Building
 
 ```bash
@@ -40,6 +49,7 @@ lake build
 - **SumoKif/ParseSexp.lean**: Lightweight S-expression parser
 - **SumoKif/Signature.lean**: Arity signature extraction
 - **SumoKif/Check.lean**: Arity and domain-declaration checking logic
+- **SumoKif/ExportAxioms.lean**: KIF → Lean axiom translation (shallow embedding)
 - **Main.lean**: Command-line interface
 
 The checker is intentionally minimal (no mathlib dependency) and focuses on syntactic well-formedness and basic semantic consistency.

@@ -1,10 +1,6 @@
+import Sumo.Core
+
 namespace Sumo
-
-axiom Obj : Type
-
-axiom ap : Obj → List Obj → Obj
-
-axiom Holds : Obj → Prop
 
 namespace Const
 
