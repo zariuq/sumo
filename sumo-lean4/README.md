@@ -13,13 +13,19 @@ This tool parses SUMO KIF files and verifies:
 
 ```bash
 # Check a single file
-lake exe sumo_kif_check -- ../Merge.kif
+lake exe sumo_kif_check ../Merge.kif
 
 # Check all .kif files in parent directory
-lake exe sumo_kif_check -- --all
+lake exe sumo_kif_check --all
 
 # Check specific files
-lake exe sumo_kif_check -- ../People.kif ../Merge.kif
+lake exe sumo_kif_check ../People.kif ../Merge.kif
+```
+
+## Exporting a Lean signature
+
+```bash
+lake exe sumo_kif_export_sig --out Sumo/Signature.lean
 ```
 
 ## Building

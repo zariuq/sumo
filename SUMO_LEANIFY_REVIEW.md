@@ -2,7 +2,7 @@
 
 Run the checker:
 
-`cd sumo-lean4 && lake exe sumo_kif_check -- --all`
+`cd sumo-lean4 && lake exe sumo_kif_check --all`
 
 ## Status
 
