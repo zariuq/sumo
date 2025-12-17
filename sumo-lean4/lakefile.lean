@@ -27,3 +27,9 @@ lean_exe sumo_kif_export_axioms where
 
 lean_exe sumo_kif_export_theory where
   root := `ExportTheoryMain
+
+lean_exe sumo_kif_export_ast where
+  root := `ExportAstMain
+
+lean_exe sumo_kif_ast_check where
+  root := `AstCheckMain

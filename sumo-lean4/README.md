@@ -46,6 +46,22 @@ so the result is a *closed* list of object-formulas you can reason about without
 lake exe sumo_kif_export_theory --module MergeTheory --out Sumo/MergeTheory.lean
 ```
 
+## Exporting a computable AST theory
+
+This emits a `def axioms : List Sumo.Ast.Expr` (chunked to keep Lean happy) plus metadata declarations as plain strings.
+
+```bash
+lake exe sumo_kif_export_ast --module MergeAst --out Sumo/MergeAst.lean
+```
+
+## Basic contradiction scan (sound but incomplete)
+
+This checks only for **ground atomic** contradictions of the form `P(t1,...,tn)` and `not P(t1,...,tn)` appearing as axioms.
+
+```bash
+lake exe sumo_kif_ast_check ../Merge.kif
+```
+
 ## Building
 
 ```bash
@@ -59,6 +75,8 @@ lake build
 - **SumoKif/Signature.lean**: Arity signature extraction
 - **SumoKif/Check.lean**: Arity and domain-declaration checking logic
 - **SumoKif/ExportAxioms.lean**: KIF → Lean axiom translation (shallow embedding)
+- **SumoKif/ExportAst.lean**: KIF → Lean computable AST theory export
+- **SumoKif/ToAst.lean**: S-expression → AST conversion (for runtime checks)
 - **Main.lean**: Command-line interface
 
 The checker is intentionally minimal (no mathlib dependency) and focuses on syntactic well-formedness and basic semantic consistency.
