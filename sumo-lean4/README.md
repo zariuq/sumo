@@ -62,6 +62,23 @@ This checks only for **ground atomic** contradictions of the form `P(t1,...,tn)`
 lake exe sumo_kif_ast_check ../Merge.kif
 ```
 
+## Bounded grounding + SAT (experimental)
+
+This is a **bounded** consistency smoke test:
+- Collects a finite universe of ground terms from the selected axioms
+- Expands `forall`/`exists` by enumerating that finite universe (row quantifiers are skipped by default)
+- Propositionalizes ground atoms and runs a small SAT solver
+
+Important: `UNSAT` is **only** w.r.t. the chosen bounds (finite term universe, axiom cap, instance cap).
+
+```bash
+# Defaults: ../tinySUMO.kif, 50 axioms, 20 terms
+lake exe sumo_kif_bmc
+
+# Increase bounds (may get slow quickly)
+lake exe sumo_kif_bmc --max-axioms 200 --max-terms 40 --max-inst 2000 ../tinySUMO.kif
+```
+
 ## Building
 
 ```bash
@@ -78,5 +95,8 @@ lake build
 - **SumoKif/ExportAst.lean**: KIF → Lean computable AST theory export
 - **SumoKif/ToAst.lean**: S-expression → AST conversion (for runtime checks)
 - **Main.lean**: Command-line interface
+- **Sumo/AstGround.lean**: Bounded quantifier grounding on the AST
+- **Sumo/PropSat.lean**: Propositionalization + tiny SAT solver
+- **BmcMain.lean**: CLI for bounded grounding + SAT
 
 The checker is intentionally minimal (no mathlib dependency) and focuses on syntactic well-formedness and basic semantic consistency.

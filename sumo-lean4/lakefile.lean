@@ -33,3 +33,9 @@ lean_exe sumo_kif_export_ast where
 
 lean_exe sumo_kif_ast_check where
   root := `AstCheckMain
+
+lean_exe sumo_kif_bmc where
+  root := `BmcMain
+
+lean_exe sumo_kif_lint where
+  root := `LintMain
