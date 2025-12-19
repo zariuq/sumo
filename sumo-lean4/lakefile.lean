@@ -15,6 +15,12 @@ lean_lib Sumo where
   ]
   precompileModules := false
 
+lean_lib LeanSUMO where
+  roots := #[
+    `LeanSUMO.tinySUMO
+  ]
+  precompileModules := false
+
 @[default_target]
 lean_exe sumo_kif_check where
   root := `Main
