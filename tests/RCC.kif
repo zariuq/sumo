@@ -196,7 +196,7 @@
 
 ;(or
 ;  (<=>
-;    (connected ?Z (ComplementFn ?Y))
+;    (connected ?Z (MereologicalComplementFn ?Y))
 ;    (not
 ;      (nonTangentialProperPart ?Z ?X)))
 ;  (<=>
@@ -253,9 +253,9 @@
     (equal ?Z
       (MereologicalDifferenceFn ?X ?Y))
     (connected ?Z ?W))
-	  (connected ?Z
-	    (MereologicalProductFn ?X
-	      (MereologicalComplementFn ?Y))))
+  (connected ?Z
+    (MereologicalProductFn ?X
+      (MereologicalComplementFn ?Y))))
 
 ; forall xy [NULL(prod(x,y)) <-> DR(x,y)]
 
@@ -367,4 +367,5 @@
 ;This fact is not obvious, but can be deduced once we examine the
 ;consistent "singleton-labelings" of the constraint network.
 ;The following paragraph briefly describes singleton-labelings.
+
 
