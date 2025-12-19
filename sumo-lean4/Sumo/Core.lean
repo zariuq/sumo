@@ -8,6 +8,7 @@ axiom Holds : Obj → Prop
 
 axiom numLit : String → Obj
 axiom strLit : String → Obj
+axiom mkSym : String → Obj
 
 axiom mkAnd : List Obj → Obj
 axiom mkOr : List Obj → Obj

@@ -39,3 +39,6 @@ lean_exe sumo_kif_bmc where
 
 lean_exe sumo_kif_lint where
   root := `LintMain
+
+lean_exe test_metatyped where
+  root := `Test.MetaTypedTest

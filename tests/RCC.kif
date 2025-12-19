@@ -188,7 +188,7 @@
     (connected ?A ?Y)))
 
 
-;compl(x) - ComplementFn?
+;compl(x) - MereologicalComplementFn?
 ; compl(x) =def iy[forall z[[C(z,y)<->~NTPP(z,x)]^[O(z,y)<->~P(z,x)]]]
 ; compl(x) =def forall xyz [[C(z,compl(x))<-> ~NTPP(z,x)]^[O(z,compl(x))<->~P(z,x)]]
 
@@ -206,13 +206,13 @@
 
 ; AP - this seems like what is intended
 
-(instance ComplementFn UnaryFunction)
-(domain ComplementFn 1 Object)
-(range ComplementFn Object)
+(instance MereologicalComplementFn UnaryFunction)
+(domain MereologicalComplementFn 1 Object)
+(range MereologicalComplementFn Object)
 (=>
   (and
     (equal ?Z
-      (ComplementFn ?Y))
+      (MereologicalComplementFn ?Y))
     (connected ?X ?Z))
   (or
     (overlaps ?X ?Y)
@@ -253,9 +253,9 @@
     (equal ?Z
       (MereologicalDifferenceFn ?X ?Y))
     (connected ?Z ?W))
-  (connected ?Z
-    (MereologicalProductFn ?X
-      (ComplementFn ?Y))))
+	  (connected ?Z
+	    (MereologicalProductFn ?X
+	      (MereologicalComplementFn ?Y))))
 
 ; forall xy [NULL(prod(x,y)) <-> DR(x,y)]
 
@@ -367,5 +367,4 @@
 ;This fact is not obvious, but can be deduced once we examine the
 ;consistent "singleton-labelings" of the constraint network.
 ;The following paragraph briefly describes singleton-labelings.
-
 
