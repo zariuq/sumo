@@ -8986,7 +8986,7 @@ being &%Soluble, then it can be combined with another &%Substance to become a %S
 
 (termFormat ChineseLanguage Soluble "可溶的")
 
-(subclass Soluble SolubilityAttribute)
+(instance Soluble SolubilityAttribute)
 
 (contraryAttribute Soluble Insoluble)
 
@@ -9016,7 +9016,7 @@ solution mixture.")
 
 (termFormat ChineseLanguage Insoluble "不可溶的")
 
-(subclass Insoluble SolubilityAttribute)
+(instance Insoluble SolubilityAttribute)
 
 (=>
   (and
