@@ -2520,6 +2520,11 @@ other")
 (documentation Ally EnglishLanguage "Two or more &%Agents agree to help and support 
 each other of the others.")
 (termFormat EnglishLanguage Ally "ally")
+
+(instance Enemy SocialRole)
+(instance Enemy DeonticAttribute)
+(documentation Enemy EnglishLanguage "A relationship where two or more \&%Agents are in opposition or conflict with each other.")
+(termFormat EnglishLanguage Enemy "enemy")
 (contraryAttribute Ally Enemy)
 
 (=>
