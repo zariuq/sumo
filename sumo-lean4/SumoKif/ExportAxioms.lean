@@ -186,6 +186,13 @@ partial def freeVars (s : Sexp) (boundTerms : Std.HashSet String := {}) (boundRo
       | (.atom (.sym "exists")) :: binder :: body :: _ =>
           let (bt, br) := addBinder binder boundTerms boundRows
           freeVars body bt br
+      | (.atom (.sym "KappaFn")) :: binder :: body :: _ =>
+          -- `(KappaFn ?X <formula>)` binds `?X` in its body.
+          let bt :=
+            match binder.asSym? with
+            | some name => if name.startsWith "?" then boundTerms.insert name else boundTerms
+            | none => boundTerms
+          freeVars body bt boundRows
       | _ =>
           xs.foldl
             (fun (accT, accR) child =>

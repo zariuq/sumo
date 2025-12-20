@@ -17,7 +17,7 @@ lean_lib Sumo where
 
 lean_lib LeanSUMO where
   roots := #[
-    `LeanSUMO.tinySUMO
+    `LeanSUMO
   ]
   precompileModules := false
 
@@ -51,6 +51,9 @@ lean_exe sumo_kif_shallow_translate where
 
 lean_exe sumo_kif_shallow_emit where
   root := `ShallowEmitMain
+
+lean_exe sumo_kif_hol_emit where
+  root := `HolEmitMain
 
 lean_exe test_metatyped where
   root := `Test.MetaTypedTest
