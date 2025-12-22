@@ -40,32 +40,5 @@ lean_exe sumo_kif_export_ast where
 lean_exe sumo_kif_ast_check where
   root := `AstCheckMain
 
-lean_exe sumo_kif_bmc where
-  root := `BmcMain
-
-lean_exe sumo_kif_lint where
-  root := `LintMain
-
-lean_exe sumo_kif_shallow_translate where
-  root := `ShallowTranslateMain
-
-lean_exe sumo_kif_shallow_emit where
-  root := `ShallowEmitMain
-
 lean_exe sumo_kif_hol_emit where
   root := `HolEmitMain
-
-lean_exe test_metatyped where
-  root := `Test.MetaTypedTest
-
-lean_exe test_shallow where
-  root := `Test.ShallowTest
-
-lean_exe test_vocab where
-  root := `Test.SumoVocabTest
-
-lean_exe test_case_roles where
-  root := `Test.CaseRolesTest
-
-lean_exe test_sumo_vocab where
-  root := `Test.SumoVocabTest
