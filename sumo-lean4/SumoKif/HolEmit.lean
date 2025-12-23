@@ -1293,18 +1293,68 @@ def emitTypedView (cfg : EmitConfig) (hsig : HolSig) (syms : SymSets) (decls : M
                     close fuel (p :: rest) (seen.insert p) edges
     close 20000 init.toList init {}
 
-  let classes : List String :=
-    sortStrings (neededClasses.toList.filter isTypedClassName)
-
   let classSet : Std.HashSet String :=
-    classes.foldl (fun acc c => acc.insert c) {}
+    neededClasses.toList.filter isTypedClassName |>.foldl (fun acc c => acc.insert c) {}
 
+  -- Compute depth of each class (distance to root in parent chain)
+  let computeDepth (c : String) : Nat :=
+    let rec goDepth (x : String) (fuel : Nat) : Nat :=
+      if fuel = 0 then 0
+      else match parentOf.get? x with
+           | none => 0
+           | some p => 1 + goDepth p (fuel - 1)
+    goDepth c 1000
+
+  -- Sort classes by depth (roots first, then alphabetically within same depth)
+  let classes : List String :=
+    neededClasses.toList.filter isTypedClassName
+      |>.map (fun c => (computeDepth c, c))
+      |>.toArray
+      |>.qsort (fun (d1, c1) (d2, c2) => d1 < d2 || (d1 = d2 && c1 < c2))
+      |>.toList
+      |>.map (fun (_, c) => c)
+
+  -- Build depth map for quick lookup
+  let depthOf : Std.HashMap String Nat :=
+    classes.foldl (fun acc c => acc.insert c (computeDepth c)) {}
+
+  -- Helper to generate the `.val` chain to access underlying Obj
+  -- For n levels of nesting, need n `.val`s
+  let mkValChain (n : Nat) : String :=
+    (List.replicate n ".val").foldl (· ++ ·) ""
+
+  -- Generate nested subtype definitions
+  -- Root classes: `def Entity := { x : Obj // Prelude.Entity x }`
+  -- Depth-1 classes: `def Abstract := { x : Entity // Prelude.Abstract x.val }` (need 1 .val)
+  -- Depth-2 classes: `def Attribute := { x : Abstract // Prelude.Attribute x.val.val }` (need 2 .vals)
   let classTypes : List String :=
     classes.map (fun c =>
       let nm := sanitizeIdent (aliasSym c)
-      s!"abbrev {nm} : Type := Of ({preludeMod}.{nm})")
+      match parentOf.get? c with
+      | none =>
+          -- Root class: subtype of Obj (no .val needed in predicate)
+          "def " ++ nm ++ " := { x : Obj // " ++ preludeMod ++ "." ++ nm ++ " x }"
+      | some p =>
+          -- Nested class: subtype of parent
+          -- To get the underlying Obj from x : Parent, we need (parentDepth + 1) .vals
+          let pNm := sanitizeIdent (aliasSym p)
+          let parentDepth := depthOf.getD p 0
+          let valChain := mkValChain (parentDepth + 1)
+          "def " ++ nm ++ " := { x : " ++ pNm ++ " // " ++ preludeMod ++ "." ++ nm ++ " x" ++ valChain ++ " }")
 
-  let subclassCoes : List String :=
+  -- Generate coercions:
+  -- 1. Parent coercion is automatic via .val for nested subtypes
+  -- 2. But we need explicit Coe to Obj for using with the faithful layer
+  -- Even depth-0 classes need .val since they're subtypes of Obj
+  let toObjCoes : List String :=
+    classes.map (fun c =>
+      let nm := sanitizeIdent (aliasSym c)
+      let depth := depthOf.getD c 0
+      let valChain := mkValChain (depth + 1)
+      "instance : Coe " ++ nm ++ " Obj where coe x := x" ++ valChain)
+
+  -- Generate parent coercions (for convenience, though .val works)
+  let parentCoes : List String :=
     neededEdges.toList
       |>.filter (fun (sub, sup) => sub != sup && classSet.contains sub && classSet.contains sup)
       |>.toArray
@@ -1313,12 +1363,9 @@ def emitTypedView (cfg : EmitConfig) (hsig : HolSig) (syms : SymSets) (decls : M
       |>.map (fun (sub, sup) =>
         let subNm := sanitizeIdent (aliasSym sub)
         let supNm := sanitizeIdent (aliasSym sup)
-        let axNm := mkSubclassAxiomName sub sup
-        String.intercalate "\n"
-          [ s!"instance : Coe {subNm} {supNm} where"
-          , s!"  coe x := ⟨(x : Obj), by"
-          , s!"    simpa using ({axiomsNs}.{axNm} (x : Obj) x.2)⟩"
-          ])
+        "instance : Coe " ++ subNm ++ " " ++ supNm ++ " where coe x := x.val")
+
+  let subclassCoes : List String := toObjCoes ++ [""] ++ parentCoes
 
   let mkArgTy (sym : String) (idx : Nat) : String :=
     if hsig.predArgs.isClassArg sym idx then "VarPred"
@@ -1366,6 +1413,7 @@ def emitTypedView (cfg : EmitConfig) (hsig : HolSig) (syms : SymSets) (decls : M
         let body := s!"{preludeMod}.{sNm} {String.intercalate " " (args.map paren)}"
         s!"def {sNm} : {sigTy} := fun {String.intercalate " " vars} => {body}")
 
+  -- Typed functions use Of (Prelude.X) for return type (flat subtype, simpler construction)
   let fnDefs : List String :=
     sortStrings syms.fns.toList
       |>.filter (fun s =>
@@ -1381,7 +1429,10 @@ def emitTypedView (cfg : EmitConfig) (hsig : HolSig) (syms : SymSets) (decls : M
           | _ => 0
         let argTys := (List.range n).map (fun i => mkArgTy s (i + 1))
         let vars := (List.range n).map (fun i => s!"x{i+1}")
-        let sigTy := curriedTys argTys (sanitizeIdent (aliasSym (info.range.getD s "")))
+        let rangeCls := info.range.getD s ""
+        -- Use Of (Prelude.X) for return type (flat subtype) to simplify construction
+        let retTy := s!"Of ({preludeMod}.{sanitizeIdent (aliasSym rangeCls)})"
+        let sigTy := curriedTys argTys retTy
         let args :=
           (List.zip argTys vars).map (fun (ty, v) => mkArgCoerce ty v)
         let rangeAx := mkRangeAxiomName s false

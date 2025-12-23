@@ -42,3 +42,6 @@ lean_exe sumo_kif_ast_check where
 
 lean_exe sumo_kif_hol_emit where
   root := `HolEmitMain
+
+lean_exe typed_emit where
+  root := `TypedEmitMain
