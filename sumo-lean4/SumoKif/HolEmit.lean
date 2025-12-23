@@ -1148,6 +1148,9 @@ def mkDomainAxiomName (sym : String) (idx : Nat) : String :=
 def mkRangeAxiomName (sym : String) (asSubclass : Bool) : String :=
   sanitizeIdent (aliasSym sym) ++ (if asSubclass then "_rangeSubclass" else "_range")
 
+def mkSubclassAxiomName (sub sup : String) : String :=
+  sanitizeIdent (aliasSym sub) ++ "_subclass_" ++ sanitizeIdent (aliasSym sup)
+
 structure TypedViewInfo where
   -- For each symbol and argument position, a *preferred* (first) domain class name.
   dom : Std.HashMap String (Std.HashMap Nat String) := {}
@@ -1203,18 +1206,119 @@ def buildTypedViewInfo (hsig : HolSig) (syms : SymSets) (decls : MetaDecls) : Ty
         acc)
     dom
 
-def emitTypedView (cfg : EmitConfig) (hsig : HolSig) (syms : SymSets) (decls : MetaDecls) : String :=
+def emitTypedView (cfg : EmitConfig) (hsig : HolSig) (syms : SymSets) (decls : MetaDecls)
+    (subclassEdges : List (String × String)) : String :=
   let info := buildTypedViewInfo hsig syms decls
   let typedMod := cfg.moduleName ++ ".Typed"
   let preludeMod := cfg.preludeModule
   let axiomsNs := cfg.axiomsNamespace
 
+  /-
+  Typed-view class selection
+
+  The full SUMO KB contains a very large number of `(subclass … …)` assertions. Emitting a
+  `CoeTC` instance for every edge is both noisy and can overflow Lean's elaborator.
+
+  For the typed view, we only need:
+  - types for classes that appear in *domain/range* metadata (the things we actually type),
+  - plus enough superclass links to coerce along a deterministic parent chain.
+
+  All other subclass facts remain available as axioms in the faithful layer.
+  -/
+
+  let importantClasses : Std.HashSet String :=
+    let fromDom : Std.HashSet String :=
+      info.dom.toList.foldl
+        (fun acc (_sym, inner) =>
+          inner.toList.foldl (fun acc (_idx, cls) => acc.insert cls) acc)
+        ({} : Std.HashSet String)
+    let fromRange : Std.HashSet String :=
+      info.range.toList.foldl (fun acc (_sym, cls) => acc.insert cls) fromDom
+    info.rangeSubclass.toList.foldl (fun acc (_sym, cls) => acc.insert cls) fromRange
+
+  let isTypedClassName (c : String) : Bool :=
+    SymSets.isPureClassSym syms c && !(isMetaSymbolClassName c)
+
+  let subclassAdj : Std.HashMap String (List String) :=
+    subclassEdges.foldl
+      (fun acc (sub, sup) =>
+        if sub = sup || !isTypedClassName sub || !isTypedClassName sup then
+          acc
+        else
+          let sups := acc.getD sub []
+          acc.insert sub (sup :: sups))
+      {}
+
+  let wouldCycle (parents : Std.HashMap String String) (sub sup : String) : Bool :=
+    let rec go (x : String) (fuel : Nat) : Bool :=
+      if fuel = 0 then
+        true
+      else if x = sub then
+        true
+      else
+        match parents.get? x with
+        | none => false
+        | some p => go p (fuel - 1)
+    go sup 2000
+
+  -- Pick one deterministic parent per class (cycle-breaking).
+  let parentOf : Std.HashMap String String :=
+    let subs := sortStrings (subclassAdj.toList.map (fun (p : String × List String) => p.1))
+    subs.foldl
+      (fun parents sub =>
+        let sups := sortStrings (subclassAdj.getD sub [])
+        match sups.find? (fun sup => !wouldCycle parents sub sup) with
+        | some sup => parents.insert sub sup
+        | none => parents)
+      {}
+
+  -- Close the important class set upward along the chosen parent links.
+  let (neededClasses, neededEdges) :=
+    let init : Std.HashSet String := importantClasses
+    let rec close (fuel : Nat) (todo : List String) (seen : Std.HashSet String)
+        (edges : Std.HashSet (String × String)) : (Std.HashSet String × Std.HashSet (String × String)) :=
+      match fuel with
+      | 0 => (seen, edges)
+      | fuel + 1 =>
+          match todo with
+          | [] => (seen, edges)
+          | c :: rest =>
+              match parentOf.get? c with
+              | none => close fuel rest seen edges
+              | some p =>
+                  let edges := edges.insert (c, p)
+                  if seen.contains p then
+                    close fuel rest seen edges
+                  else
+                    close fuel (p :: rest) (seen.insert p) edges
+    close 20000 init.toList init {}
+
+  let classes : List String :=
+    sortStrings (neededClasses.toList.filter isTypedClassName)
+
+  let classSet : Std.HashSet String :=
+    classes.foldl (fun acc c => acc.insert c) {}
+
   let classTypes : List String :=
-    sortStrings syms.classes.toList
-      |>.filter (fun c => SymSets.isPureClassSym syms c && !(isMetaSymbolClassName c))
-      |>.map (fun c =>
-        let nm := sanitizeIdent (aliasSym c)
-        s!"abbrev {nm} : Type := Of ({preludeMod}.{nm})")
+    classes.map (fun c =>
+      let nm := sanitizeIdent (aliasSym c)
+      s!"abbrev {nm} : Type := Of ({preludeMod}.{nm})")
+
+  let subclassCoes : List String :=
+    neededEdges.toList
+      |>.filter (fun (sub, sup) => sub != sup && classSet.contains sub && classSet.contains sup)
+      |>.toArray
+      |>.qsort (fun a b => a.1 < b.1 || (a.1 = b.1 && a.2 < b.2))
+      |>.toList
+      |>.map (fun (sub, sup) =>
+        let subNm := sanitizeIdent (aliasSym sub)
+        let supNm := sanitizeIdent (aliasSym sup)
+        let axNm := mkSubclassAxiomName sub sup
+        String.intercalate "\n"
+          [ s!"instance : Coe {subNm} {supNm} where"
+          , s!"  coe x := ⟨(x : Obj), by"
+          , s!"    simpa using ({axiomsNs}.{axNm} (x : Obj) x.2)⟩"
+          ])
 
   let mkArgTy (sym : String) (idx : Nat) : String :=
     if hsig.predArgs.isClassArg sym idx then "VarPred"
@@ -1324,10 +1428,12 @@ def emitTypedView (cfg : EmitConfig) (hsig : HolSig) (syms : SymSets) (decls : M
      , ""
      , "/-- Objects satisfying a class predicate. -/"
      , "abbrev Of (C : Class) : Type := { x : Obj // C x }"
-     , "instance {C : Class} : CoeTC (Of C) Obj where coe x := x.1"
      , ""
      , "/-! ## Class Types -/"
      ] ++ classTypes ++
+     [ ""
+     , "/-! ## Class Coercions (from subclass facts) -/"
+     ] ++ subclassCoes ++
      [ ""
      , "/-! ## Typed Relations (best-effort, from domain metadata) -/"
      ] ++ relDefs ++

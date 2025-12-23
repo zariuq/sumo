@@ -270,6 +270,63 @@ def writeModule (outputDir : System.FilePath) (modName : String) (src : String) 
     IO.FS.createDirAll parent
   IO.FS.writeFile out src
 
+def reportMetaConflicts (metaDecls : MetaDecls) : IO Unit := do
+  let sortStrings (xs : List String) : List String :=
+    (xs.toArray.qsort (· < ·)).toList
+
+  let collectDom (xs : List (String × Nat × String)) :
+      Std.HashMap String (Std.HashMap Nat (Std.HashSet String)) :=
+    xs.foldl
+      (fun acc (sym, idx, cls) =>
+        let inner := acc.getD sym {}
+        let set := inner.getD idx {}
+        acc.insert sym (inner.insert idx (set.insert cls)))
+      {}
+  let collectRange (xs : List (String × String)) : Std.HashMap String (Std.HashSet String) :=
+    xs.foldl
+      (fun acc (sym, cls) =>
+        let set := acc.getD sym {}
+        acc.insert sym (set.insert cls))
+      {}
+
+  let dom := collectDom metaDecls.domains
+  let domSub := collectDom metaDecls.domainSubclasses
+  let ran := collectRange metaDecls.ranges
+  let ranSub := collectRange metaDecls.rangeSubclasses
+
+  let mut conflicts : List String := []
+
+  for (sym, inner) in dom.toList do
+    for (idx, cs) in inner.toList do
+      if cs.size > 1 then
+        conflicts := conflicts ++ [s!"domain conflict: {sym}/{idx} ∈ {sortStrings cs.toList}"]
+
+  for (sym, inner) in domSub.toList do
+    for (idx, cs) in inner.toList do
+      if cs.size > 1 then
+        conflicts := conflicts ++ [s!"domainSubclass conflict: {sym}/{idx} ∈ {sortStrings cs.toList}"]
+
+  for (sym, cs) in ran.toList do
+    if cs.size > 1 then
+      conflicts := conflicts ++ [s!"range conflict: {sym} ∈ {sortStrings cs.toList}"]
+
+  for (sym, cs) in ranSub.toList do
+    if cs.size > 1 then
+      conflicts := conflicts ++ [s!"rangeSubclass conflict: {sym} ∈ {sortStrings cs.toList}"]
+
+  if conflicts.isEmpty then
+    return ()
+
+  -- Keep output bounded: show a small prefix, but print the total count.
+  let conflictsSorted := sortStrings conflicts
+  let maxShow := 25
+  IO.eprintln s!"warning: metadata conflicts detected: {conflictsSorted.length}"
+  for c in conflictsSorted.take maxShow do
+    IO.eprintln s!"  {c}"
+  if conflictsSorted.length > maxShow then
+    IO.eprintln s!"  (showing first {maxShow})"
+  IO.eprintln "note: the typed view picks a deterministic preferred type (first encountered)."
+
 def main (args : List String) : IO UInt32 := do
   let cfg ←
     match parseArgs args with
@@ -301,6 +358,8 @@ def main (args : List String) : IO UInt32 := do
         let (m, a) := foldDecls xs
         metaDecls := metaDecls.merge m
         assertions := assertions ++ a
+
+  reportMetaConflicts metaDecls
 
   let sig := Signature.fromKb allForms
 
@@ -352,6 +411,7 @@ def main (args : List String) : IO UInt32 := do
     { sig := sig, clsArgs := clsArgs, predArgs := predArgs, fnSyms := fnSyms, clsFnSyms := clsFnSyms }
 
   let mut axioms : List SumoKif.HolEmit.AxiomDecl := []
+  let mut emittedSubclassEdges : List (String × String) := []
 
   -- Compile (domain ...) declarations into domain axioms for predicates.
   for (sym, idx, cls) in metaDecls.domains do
@@ -419,15 +479,22 @@ def main (args : List String) : IO UInt32 := do
       match a with
       | .list ((.atom (.sym "subrelation")) :: (.atom (.sym r1)) :: (.atom (.sym r2)) :: _) => some (r1, r2)
       | _ => none
+    let subclassNames? : Option (String × String) :=
+      match a with
+      | .list ((.atom (.sym "subclass")) :: (.atom (.sym c1)) :: (.atom (.sym c2)) :: _) => some (c1, c2)
+      | _ => none
     let expr :=
       match rewriteSubrelation? sig fnSyms a with
       | some e => e
       | none => closeForall a
     let name? :=
-      match subrelNames? with
-      | some (r1, r2) => some (sanitizeIdent (aliasSym r1) ++ "_subrelation_" ++ sanitizeIdent (aliasSym r2))
-      | none => none
+      match subrelNames?, subclassNames? with
+      | some (r1, r2), _ => some (sanitizeIdent (aliasSym r1) ++ "_subrelation_" ++ sanitizeIdent (aliasSym r2))
+      | none, some (c1, c2) => some (mkSubclassAxiomName c1 c2)
+      | none, none => none
     axioms := axioms ++ [{ name? := name?, src := srcStr, expr := expr }]
+    if let some (c1, c2) := subclassNames? then
+      emittedSubclassEdges := (c1, c2) :: emittedSubclassEdges
     if let some max := cfg.maxAxioms then
       assertionCount := assertionCount + 1
       if assertionCount ≥ max then
@@ -450,6 +517,11 @@ def main (args : List String) : IO UInt32 := do
   let allExprs := axioms.map (fun a => a.expr)
   let syms :=
     allExprs.foldl (fun acc e => collectSyms hsig acc .formula e) ({})
+
+  -- Only include subclass edges whose corresponding subclass axioms were emitted. This keeps the
+  -- typed view (coercions) consistent even when `--max-axioms` is used.
+  let subclassEdges : List (String × String) :=
+    (emittedSubclassEdges.reverse).eraseDups
 
   -- Prelude can be very large (tens of thousands of lines of symbol declarations), and Lean may
   -- stack overflow while elaborating a single giant file. Emit it in chunks.
@@ -509,7 +581,7 @@ def main (args : List String) : IO UInt32 := do
   writeModule cfg.outputDir axiomsMod wrapperSrc
 
   -- Typed view module (best-effort), generated from metadata.
-  let typedSrc := emitTypedView cfgOut hsig syms metaDecls
+  let typedSrc := emitTypedView cfgOut hsig syms metaDecls subclassEdges
   writeModule cfg.outputDir typedMod typedSrc
 
   -- Root convenience module
